@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌲 8組樹木成長互動計分板</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Canvas Confetti CDN for 60 points victory -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
+        
+        body {
+            font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(180deg, #1e3a8a 0%, #065f46 40%, #022c22 100%);
+            min-height: 100vh;
+            color: #ffffff;
+            overflow-x: hidden;
+        }
+
+        /* Ambient floating particles */
+        .bg-glow {
+            box-shadow: 0 0 50px rgba(52, 211, 153, 0.25);
+        }
+
+        /* Tree Swaying Animation */
+        @keyframes sway {
+            0%, 100% { transform: rotate(-2deg); }
+            50% { transform: rotate(2deg); }
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { filter: drop-shadow(0 0 15px rgba(250, 204, 21, 0.8)); transform: scale(1); }
+            50% { filter: drop-shadow(0 0 25px rgba(250, 204, 21, 1)); transform: scale(1.03); }
+        }
+
+        .sway-animation {
+            animation: sway 4s ease-in-out infinite;
+            transform-origin: bottom center;
+        }
+
+        .giant-glow {
+            animation: pulse-glow 2.5s infinite ease-in-out, sway 3s ease-in-out infinite;
+            transform-origin: bottom center;
+        }
+
+        /* Floating Score Text Animation */
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(-40px) scale(1.3); }
+        }
+
+        .floating-score {
+            animation: floatUp 1s ease-out forwards;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.2);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.3);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+
+    <!-- Top Navigation & Control Bar -->
+    <header class="bg-slate-900/80 backdrop-blur-md border-b border-emerald-500/30 sticky top-0 z-50 px-4 py-3">
+        <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <span class="text-3xl">🌲</span>
+                <div>
+                    <h1 class="font-extrabold text-xl md:text-2xl text-emerald-400 tracking-wide">活動樹木成長計分板</h1>
+                    <p class="text-xs text-slate-300">8組即時視覺化競賽系統 (目標 60 分成為參天大樹)</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 flex-wrap">
+                <!-- View Mode Toggles -->
+                <button id="btn-projector" onclick="switchView('projector')" class="px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 bg-emerald-500 text-slate-950 shadow-lg hover:bg-emerald-400">
+                    🖥️ 投影模式 (大螢幕)
+                </button>
+                <button id="btn-controller" onclick="switchView('controller')" class="px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 bg-slate-800 text-slate-300 hover:bg-slate-700">
+                    📱 手機/主控模式
+                </button>
+                
+                <div class="h-6 w-px bg-slate-700 mx-1"></div>
+
+                <!-- Sound Toggle & Reset -->
+                <button onclick="toggleAudio()" id="audio-btn" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold transition" title="音效">
+                    🔊 音效: 開
+                </button>
+                <button onclick="resetScores()" class="p-2 rounded-xl bg-red-900/40 hover:bg-red-800/60 border border-red-500/30 text-red-200 text-sm font-semibold transition" title="重置分數">
+                    🔄 重置
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 flex flex-col justify-center">
+
+        <!-- ========================================== -->
+        <!-- VIEW 1: PROJECTOR MODE (8 TEAMS DISPLAY)   -->
+        <!-- ========================================== -->
+        <section id="projector-view" class="w-full">
+            <!-- Stage Status Banner -->
+            <div class="mb-6 bg-emerald-950/60 border border-emerald-500/30 rounded-2xl p-4 flex flex-wrap justify-around items-center gap-2 text-center backdrop-blur-sm">
+                <div class="flex items-center gap-2 text-sm md:text-base">
+                    <span class="text-2xl">🌰</span>
+                    <span class="text-slate-300">0 - 14 分: <strong class="text-amber-400">種子期</strong></span>
+                </div>
+                <div class="flex items-center gap-2 text-sm md:text-base">
+                    <span class="text-2xl">🌱</span>
+                    <span class="text-slate-300">15 - 29 分: <strong class="text-emerald-400">發芽期</strong></span>
+                </div>
+                <div class="flex items-center gap-2 text-sm md:text-base">
+                    <span class="text-2xl">🌿</span>
+                    <span class="text-slate-300">30 - 44 分: <strong class="text-green-400">幼苗期</strong></span>
+                </div>
+                <div class="flex items-center gap-2 text-sm md:text-base">
+                    <span class="text-2xl">🌳</span>
+                    <span class="text-slate-300">45 - 59 分: <strong class="text-teal-300">成長樹</strong></span>
+                </div>
+                <div class="flex items-center gap-2 text-sm md:text-base">
+                    <span class="text-2xl">🌲</span>
+                    <span class="text-slate-300">60+ 分: <strong class="text-yellow-300 font-bold">參天大樹 👑</strong></span>
+                </div>
+            </div>
+
+            <!-- 8 Team Grid -->
+            <div id="projector-grid" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 md:gap-4">
+                <!-- JS Will Render 8 Team Cards Here -->
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- VIEW 2: CONTROLLER MODE (MOBILE ADMIN)     -->
+        <!-- ========================================== -->
+        <section id="controller-view" class="w-full hidden">
+            <div class="mb-4 bg-blue-900/40 border border-blue-500/30 rounded-xl p-4 flex items-center justify-between">
+                <div>
+                    <h2 class="font-bold text-lg text-blue-300">📱 手機/行動裝置計分面板</h2>
+                    <p class="text-xs text-slate-300">點擊下方按鈕即可即時同步更新大螢幕上對應組別的樹木狀態。</p>
+                </div>
+                <button onclick="copyControllerLink()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-bold transition">
+                    📋 複製連結/同步說明
+                </button>
+            </div>
+
+            <div id="controller-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- JS Will Render 8 Team Control Panels Here -->
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="py-3 text-center text-xs text-slate-400 bg-slate-950/60 border-t border-slate-800">
+        🌲 活動互動計分系統 | 跨裝置自動同步系統啟用中
+    </footer>
+
+    <!-- Custom Modal Notification -->
+    <div id="toast-modal" class="fixed bottom-6 right-6 bg-emerald-600 text-slate-950 font-bold px-5 py-3 rounded-2xl shadow-2xl transition transform translate-y-20 opacity-0 z-50 flex items-center gap-2">
+        <span id="toast-icon">✨</span>
+        <span id="toast-msg">提示訊息</span>
+    </div>
+
+    <script>
+        const TOTAL_TEAMS = 8;
+        const TARGET_SCORE = 60;
+        
+        // Default Teams State
+        let teamsState = [
+            { id: 1, name: '第一組', score: 0 },
+            { id: 2, name: '第二組', score: 0 },
+            { id: 3, name: '第三組', score: 0 },
+            { id: 4, name: '第四組', score: 0 },
+            { id: 5, name: '第五組', score: 0 },
+            { id: 6, name: '第六組', score: 0 },
+            { id: 7, name: '第七組', score: 0 },
+            { id: 8, name: '第八組', score: 0 },
+        ];
+
+        let soundEnabled = true;
+        let currentView = 'projector';
+
+        // Multi-tab real-time sync channel
+        const syncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('tree_score_sync') : null;
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playSound(type) {
+            if (!soundEnabled) return;
+            try {
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                const now = audioCtx.currentTime;
+
+                if (type === 'up') {
+                    // Upbeat major chime
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(523.25, now); // C5
+                    osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.1); // E5
+                    osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.2); // G5
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+                    osc.start(now);
+                    osc.stop(now + 0.35);
+                } else if (type === 'down') {
+                    // Low pitch drop
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(300, now);
+                    osc.frequency.exponentialRampToValueAtTime(150, now + 0.2);
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+                    osc.start(now);
+                    osc.stop(now + 0.25);
+                } else if (type === 'victory') {
+                    // Fanfare flourish
+                    const notes = [523.25, 659.25, 783.99, 1046.50];
+                    notes.forEach((freq, idx) => {
+                        const subOsc = audioCtx.createOscillator();
+                        const subGain = audioCtx.createGain();
+                        subOsc.connect(subGain);
+                        subGain.connect(audioCtx.destination);
+                        subOsc.type = 'triangle';
+                        subOsc.frequency.setValueAtTime(freq, now + idx * 0.1);
+                        subGain.gain.setValueAtTime(0.3, now + idx * 0.1);
+                        subGain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.1 + 0.3);
+                        subOsc.start(now + idx * 0.1);
+                        subOsc.stop(now + idx * 0.1 + 0.3);
+                    });
+                }
+            } catch(e) {
+                console.log("Audio play error", e);
+            }
+        }
+
+        function initData() {
+            const saved = localStorage.getItem('tree_scores_data');
+            if (saved) {
+                try {
+                    teamsState = JSON.parse(saved);
+                } catch(e) {
+                    console.error('Data restore failed', e);
+                }
+            }
+            
+            // Listen for cross-tab sync
+            if (syncChannel) {
+                syncChannel.onmessage = (event) => {
+                    if (event.data && event.data.type === 'UPDATE_SCORES') {
+                        teamsState = event.data.teams;
+                        renderAll();
+                    }
+                };
+            }
+
+            window.addEventListener('storage', (e) => {
+                if (e.key === 'tree_scores_data' && e.newValue) {
+                    teamsState = JSON.parse(e.newValue);
+                    renderAll();
+                }
+            });
+
+            // Check URL query for view mode
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('mode') === 'controller') {
+                switchView('controller');
+            } else {
+                renderAll();
+            }
+        }
+
+        function saveData(triggerSync = true) {
+            localStorage.setItem('tree_scores_data', JSON.stringify(teamsState));
+            if (triggerSync && syncChannel) {
+                syncChannel.postMessage({ type: 'UPDATE_SCORES', teams: teamsState });
+            }
+            renderAll();
+        }
+
+        function getStageInfo(score) {
+            if (score <= 14) {
+                return {
+                    stage: 1,
+                    name: '🌰 種子期',
+                    badgeBg: 'bg-amber-900/60 text-amber-300 border-amber-500/30',
+                    svg: `
+                    <svg viewBox="0 0 100 100" class="w-full h-32 md:h-44 sway-animation">
+                        <!-- Soil Base -->
+                        <path d="M10 85 Q50 75 90 85 L90 95 L10 95 Z" fill="#78350f" />
+                        <path d="M15 84 Q50 78 85 84" stroke="#a16207" stroke-width="2" fill="none" />
+                        <!-- Seed -->
+                        <ellipse cx="50" cy="80" rx="12" ry="8" fill="#451a03" transform="rotate(-15 50 80)" stroke="#78350f" stroke-width="2" />
+                        <!-- Tiny Root / Sprout Tip -->
+                        <path d="M50 74 Q52 68 54 65" stroke="#84cc16" stroke-width="3" stroke-linecap="round" fill="none" />
+                    </svg>`
+                };
+            } else if (score <= 29) {
+                return {
+                    stage: 2,
+                    name: '🌱 發芽期',
+                    badgeBg: 'bg-emerald-900/60 text-emerald-300 border-emerald-500/30',
+                    svg: `
+                    <svg viewBox="0 0 100 100" class="w-full h-32 md:h-44 sway-animation">
+                        <!-- Soil Base -->
+                        <path d="M10 85 Q50 75 90 85 L90 95 L10 95 Z" fill="#78350f" />
+                        <!-- Stem -->
+                        <path d="M50 85 Q48 65 50 50" stroke="#65a30d" stroke-width="4" stroke-linecap="round" fill="none" />
+                        <!-- Two Leaves -->
+                        <path d="M50 55 Q35 45 30 50 Q38 62 50 58" fill="#84cc16" />
+                        <path d="M50 52 Q65 42 70 47 Q62 59 50 55" fill="#4d7c0f" />
+                    </svg>`
+                };
+            } else if (score <= 44) {
+                return {
+                    stage: 3,
+                    name: '🌿 幼苗期',
+                    badgeBg: 'bg-green-900/60 text-green-300 border-green-500/30',
+                    svg: `
+                    <svg viewBox="0 0 100 100" class="w-full h-32 md:h-44 sway-animation">
+                        <!-- Soil Base -->
+                        <path d="M10 85 Q50 75 90 85 L90 95 L10 95 Z" fill="#78350f" />
+                        <!-- Trunk/Stem -->
+                        <path d="M50 85 Q47 55 50 35" stroke="#b45309" stroke-width="6" stroke-linecap="round" fill="none" />
+                        <!-- Foliage Clusters -->
+                        <circle cx="50" cy="30" r="16" fill="#22c55e" />
+                        <circle cx="38" cy="40" r="13" fill="#16a34a" />
+                        <circle cx="62" cy="40" r="13" fill="#15803d" />
+                        <circle cx="50" cy="24" r="10" fill="#4ade80" />
+                    </svg>`
+                };
+            } else if (score <= 59) {
+                return {
+                    stage: 4,
+                    name: '🌳 成長樹',
+                    badgeBg: 'bg-teal-900/60 text-teal-300 border-teal-500/30',
+                    svg: `
+                    <svg viewBox="0 0 100 100" class="w-full h-32 md:h-44 sway-animation">
+                        <!-- Soil Base -->
+                        <path d="M10 85 Q50 75 90 85 L90 95 L10 95 Z" fill="#78350f" />
+                        <!-- Strong Trunk -->
+                        <path d="M50 85 L44 50 Q30 40 25 35 M50 85 L56 50 Q70 40 75 35 M50 85 L50 30" stroke="#92400e" stroke-width="8" stroke-linecap="round" fill="none" />
+                        <!-- Full Foliage Canopy -->
+                        <circle cx="50" cy="25" r="22" fill="#10b981" />
+                        <circle cx="32" cy="35" r="18" fill="#059669" />
+                        <circle cx="68" cy="35" r="18" fill="#047857" />
+                        <circle cx="50" cy="42" r="16" fill="#15803d" />
+                        <!-- Apples / Flowers -->
+                        <circle cx="40" cy="25" r="3" fill="#ef4444" />
+                        <circle cx="60" cy="28" r="3" fill="#ef4444" />
+                        <circle cx="50" cy="38" r="3" fill="#ef4444" />
+                    </svg>`
+                };
+            } else {
+                return {
+                    stage: 5,
+                    name: '🌲 參天大樹',
+                    badgeBg: 'bg-yellow-500/20 text-yellow-300 border-yellow-400/50 shadow-lg',
+                    svg: `
+                    <svg viewBox="0 0 100 100" class="w-full h-32 md:h-44 giant-glow">
+                        <defs>
+                            <filter id="gold-glow" x="-20%" y="-20%" width="140%" height="140%">
+                                <feGaussianBlur stdDeviation="3" result="blur" />
+                                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                            </filter>
+                        </defs>
+                        <!-- Golden Roots Base -->
+                        <path d="M5 88 Q50 78 95 88 L95 95 L5 95 Z" fill="#78350f" />
+                        <!-- Grand Trunk -->
+                        <path d="M50 90 L42 45 Q20 30 12 20 M50 90 L58 45 Q80 30 88 20 M50 90 L50 20" stroke="#78350f" stroke-width="12" stroke-linecap="round" fill="none" />
+                        <!-- Magical Golden Crown Leaves -->
+                        <circle cx="50" cy="20" r="26" fill="#15803d" filter="url(#gold-glow)" />
+                        <circle cx="26" cy="32" r="22" fill="#166534" />
+                        <circle cx="74" cy="32" r="22" fill="#14532d" />
+                        <circle cx="50" cy="38" r="20" fill="#22c55e" />
+                        <circle cx="50" cy="14" r="18" fill="#4ade80" />
+                        
+                        <!-- Crown Effect on Top -->
+                        <path d="M42 0 L46 6 L50 0 L54 6 L58 0 L56 10 L44 10 Z" fill="#facc15" />
+                        
+                        <!-- Floating Golden Sparkles -->
+                        <circle cx="20" cy="15" r="2" fill="#fde047" class="animate-ping" />
+                        <circle cx="80" cy="18" r="2" fill="#fde047" class="animate-ping" />
+                        <circle cx="50" cy="5" r="2.5" fill="#fde047" class="animate-ping" />
+                    </svg>`
+                };
+            }
+        }
+
+        function renderProjectorView() {
+            const grid = document.getElementById('projector-grid');
+            grid.innerHTML = '';
+
+            // Calculate ranks
+            const sorted = [...teamsState].sort((a,b) => b.score - a.score);
+
+            teamsState.forEach((team) => {
+                const stageInfo = getStageInfo(team.score);
+                const progressPercent = Math.min(100, Math.max(0, (team.score / TARGET_SCORE) * 100));
+
+                // Rank badge
+                let rankText = '';
+                if (team.score > 0) {
+                    const rankIndex = sorted.findIndex(t => t.id === team.id);
+                    if (rankIndex === 0) rankText = '🥇 第 1 名';
+                    else if (rankIndex === 1) rankText = '🥈 第 2 名';
+                    else if (rankIndex === 2) rankText = '🥉 第 3 名';
+                }
+
+                const cardHtml = `
+                    <div class="relative bg-slate-900/70 border ${team.score >= TARGET_SCORE ? 'border-yellow-400 bg-yellow-950/20 bg-glow' : 'border-slate-800'} rounded-2xl p-3 flex flex-col justify-between items-center transition-all duration-500 hover:border-emerald-500/50 backdrop-blur-md">
+                        
+                        ${rankText ? `<div class="absolute -top-3 left-1/2 transform -translate-x-1/2 px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-xs shadow-md whitespace-nowrap z-10">${rankText}</div>` : ''}
+
+                        <!-- Team Header -->
+                        <div class="text-center w-full mt-1">
+                            <h3 class="font-extrabold text-base md:text-lg text-slate-100 truncate">${team.name}</h3>
+                            <span class="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded-full border ${stageInfo.badgeBg}">
+                                ${stageInfo.name}
+                            </span>
+                        </div>
+
+                        <!-- Animated Tree Container -->
+                        <div class="w-full my-2 flex items-end justify-center relative min-h-[140px] md:min-h-[180px]">
+                            ${stageInfo.svg}
+                        </div>
+
+                        <!-- Score & Progress Bar -->
+                        <div class="w-full">
+                            <div class="flex justify-between items-baseline mb-1 text-xs">
+                                <span class="text-slate-400 font-medium">得分</span>
+                                <span class="font-extrabold text-lg ${team.score >= TARGET_SCORE ? 'text-yellow-400 font-black text-xl animate-bounce' : 'text-emerald-400'}">
+                                    ${team.score} <span class="text-xs text-slate-400 font-normal">/ 60</span>
+                                </span>
+                            </div>
+
+                            <!-- Progress Bar -->
+                            <div class="w-full h-3 bg-slate-950 rounded-full overflow-hidden border border-slate-800 p-0.5">
+                                <div class="h-full rounded-full transition-all duration-700 ease-out ${team.score >= TARGET_SCORE ? 'bg-gradient-to-r from-yellow-500 to-amber-300' : 'bg-gradient-to-r from-emerald-500 to-teal-300'}" style="width: ${progressPercent}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                grid.insertAdjacentHTML('beforeend', cardHtml);
+            });
+        }
+
+        function renderControllerView() {
+            const grid = document.getElementById('controller-grid');
+            grid.innerHTML = '';
+
+            teamsState.forEach((team) => {
+                const stageInfo = getStageInfo(team.score);
+
+                const controlHtml = `
+                    <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-xl">
+                        <!-- Top Info -->
+                        <div class="flex items-center justify-between gap-2 mb-3">
+                            <input type="text" value="${team.name}" onchange="updateTeamName(${team.id}, this.value)" 
+                                class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-sm font-bold text-emerald-300 focus:outline-none focus:border-emerald-500 w-full"
+                                placeholder="輸入隊名" />
+                            <span class="px-2 py-1 text-xs font-bold rounded-md bg-slate-800 text-slate-300 whitespace-nowrap">
+                                ${stageInfo.name}
+                            </span>
+                        </div>
+
+                        <!-- Score Display -->
+                        <div class="text-center py-2 bg-slate-950/60 rounded-xl mb-3 border border-slate-800/80">
+                            <span class="text-xs text-slate-400 block mb-0.5">目前分數</span>
+                            <span class="text-3xl font-black text-emerald-400">${team.score}</span>
+                            <span class="text-xs text-slate-500"> 分</span>
+                        </div>
+
+                        <!-- Buttons Row -->
+                        <div class="grid grid-cols-5 gap-1.5 mb-2">
+                            <button onclick="changeScore(${team.id}, -5)" class="py-2 rounded-lg bg-red-950 hover:bg-red-900 border border-red-800 text-red-200 font-bold text-xs transition active:scale-95">-5</button>
+                            <button onclick="changeScore(${team.id}, -1)" class="py-2 rounded-lg bg-red-900/60 hover:bg-red-800 border border-red-700 text-red-200 font-bold text-xs transition active:scale-95">-1</button>
+                            <button onclick="changeScore(${team.id}, 1)" class="py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs transition active:scale-95">+1</button>
+                            <button onclick="changeScore(${team.id}, 5)" class="py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition active:scale-95">+5</button>
+                            <button onclick="changeScore(${team.id}, 10)" class="py-2 rounded-lg bg-teal-500 hover:bg-teal-400 text-slate-950 font-black text-xs transition active:scale-95">+10</button>
+                        </div>
+
+                        <!-- Direct Score Input -->
+                        <div class="flex items-center gap-2 mt-1">
+                            <span class="text-xs text-slate-400">自訂分:</span>
+                            <input type="number" value="${team.score}" onchange="setDirectScore(${team.id}, this.value)" 
+                                class="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs font-bold text-slate-200 w-full text-center" />
+                        </div>
+                    </div>
+                `;
+                grid.insertAdjacentHTML('beforeend', controlHtml);
+            });
+        }
+
+        function changeScore(teamId, delta) {
+            const team = teamsState.find(t => t.id === teamId);
+            if (!team) return;
+
+            const oldScore = team.score;
+            team.score = Math.max(0, team.score + delta);
+
+            if (delta > 0) {
+                playSound('up');
+                showToast(`[${team.name}] +${delta} 分！`, '🌱');
+            } else if (delta < 0) {
+                playSound('down');
+            }
+
+            // Check if reached 60 points milestone
+            if (oldScore < TARGET_SCORE && team.score >= TARGET_SCORE) {
+                playSound('victory');
+                showToast(`🎉 恭喜 [${team.name}] 達成 60 分成為參天大樹！`, '🌲');
+                fireConfetti();
+            }
+
+            saveData();
+        }
+
+        function setDirectScore(teamId, val) {
+            const num = parseInt(val, 10);
+            if (isNaN(num)) return;
+            const team = teamsState.find(t => t.id === teamId);
+            if (!team) return;
+            
+            const oldScore = team.score;
+            team.score = Math.max(0, num);
+
+            if (oldScore < TARGET_SCORE && team.score >= TARGET_SCORE) {
+                playSound('victory');
+                fireConfetti();
+            }
+
+            saveData();
+        }
+
+        function updateTeamName(teamId, newName) {
+            const team = teamsState.find(t => t.id === teamId);
+            if (team && newName.trim() !== '') {
+                team.name = newName.trim();
+                saveData();
+            }
+        }
+
+        function resetScores() {
+            if (confirm('確定要將所有組別的分數歸零嗎？')) {
+                teamsState.forEach(t => t.score = 0);
+                saveData();
+                showToast('所有組別分數已重置！', '🔄');
+            }
+        }
+
+        function switchView(mode) {
+            currentView = mode;
+            const projView = document.getElementById('projector-view');
+            const ctrlView = document.getElementById('controller-view');
+            const btnProj = document.getElementById('btn-projector');
+            const btnCtrl = document.getElementById('btn-controller');
+
+            if (mode === 'projector') {
+                projView.classList.remove('hidden');
+                ctrlView.classList.add('hidden');
+                btnProj.className = "px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 bg-emerald-500 text-slate-950 shadow-lg hover:bg-emerald-400";
+                btnCtrl.className = "px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 bg-slate-800 text-slate-300 hover:bg-slate-700";
+            } else {
+                projView.classList.add('hidden');
+                ctrlView.classList.remove('hidden');
+                btnCtrl.className = "px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 bg-emerald-500 text-slate-950 shadow-lg hover:bg-emerald-400";
+                btnProj.className = "px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 bg-slate-800 text-slate-300 hover:bg-slate-700";
+            }
+            renderAll();
+        }
+
+        function renderAll() {
+            if (currentView === 'projector') {
+                renderProjectorView();
+            } else {
+                renderControllerView();
+            }
+        }
+
+        function toggleAudio() {
+            soundEnabled = !soundEnabled;
+            document.getElementById('audio-btn').innerText = soundEnabled ? '🔊 音效: 開' : '🔇 音效: 關';
+        }
+
+        function showToast(msg, icon = '✨') {
+            const toast = document.getElementById('toast-modal');
+            document.getElementById('toast-msg').innerText = msg;
+            document.getElementById('toast-icon').innerText = icon;
+
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        function fireConfetti() {
+            if (typeof confetti === 'function') {
+                confetti({
+                    particleCount: 120,
+                    spread: 80,
+                    origin: { y: 0.6 }
+                });
+            }
+        }
+
+        function copyControllerLink() {
+            const url = window.location.href.split('?')[0] + '?mode=controller';
+            // Use fallback method for copy in iframe
+            const tempInput = document.createElement("input");
+            tempInput.value = url;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand("copy");
+            document.body.removeChild(tempInput);
+            showToast('已複製手機控制網址！可在手機上開啟操作。', '📋');
+        }
+
+        // Initialize App on Load
+        window.onload = function() {
+            initData();
+        };
+    </script>
+</body>
+</html>
