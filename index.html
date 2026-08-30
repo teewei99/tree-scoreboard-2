@@ -559,6 +559,12 @@ const TOTAL_TEAMS = 8;
                     <div class="mt-4 w-full h-3 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
                         <div class="h-full rounded-full transition-all duration-700 ease-out ${team.score >= TARGET_SCORE ? 'bg-gradient-to-r from-yellow-500 to-amber-300' : 'bg-gradient-to-r from-emerald-500 to-teal-300'}" style="width: ${Math.min(100, Math.max(0, team.score / TARGET_SCORE * 100))}%"></div>
                     </div>
+
+                    <div class="mt-4 text-center">
+                        <button onclick="clearGroupSelection()" class="text-xs text-slate-400 hover:text-red-300 underline transition">
+                            選錯組別了？點此重新選擇
+                        </button>
+                    </div>
                 </div>`;
         }
 
@@ -572,6 +578,14 @@ const TOTAL_TEAMS = 8;
             localStorage.setItem('tree_selected_group', String(teamId));
             renderControllerView();
             showToast(`已選擇第 ${teamId} 組`, '🌱');
+        }
+
+        function clearGroupSelection() {
+            if (confirm('確定要重新選擇組別嗎？')) {
+                localStorage.removeItem('tree_selected_group');
+                renderControllerView();
+                showToast('請重新選擇你的組別', '🔄');
+            }
         }
 
         function changeScore(teamId, delta) {
