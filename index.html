@@ -79,6 +79,7 @@
                 <div>
                     <h1 class="font-extrabold text-xl md:text-2xl text-emerald-400 tracking-wide">活動樹木成長計分板</h1>
                     <p class="text-xs text-slate-300">8組即時視覺化競賽系統｜每組獨立計分</p>
+                    <div id="firebase-status" class="text-[10px] text-slate-400 mt-0.5">🟠 正在連接雲端...</div>
                 </div>
             </div>
 
@@ -165,8 +166,27 @@
         <span id="toast-msg">提示訊息</span>
     </div>
 
+    <!-- Firebase Realtime Database -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+
     <script>
-        const TOTAL_TEAMS = 8;
+        const firebaseConfig = {
+            apiKey: "AIzaSyAw99rYKSalz2HNiOaB6fGQ5uz7Y6wxzJ0",
+            authDomain: "tree-a23cd.firebaseapp.com",
+            databaseURL: "https://tree-a23cd-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "tree-a23cd",
+            storageBucket: "tree-a23cd.firebasestorage.app",
+            messagingSenderId: "957344121895",
+            appId: "1:957344121895:web:e51e96e3370d1c91953a02",
+            measurementId: "G-M90VKQ355D"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const teamsRef = db.ref('teams');
+
+const TOTAL_TEAMS = 8;
         const TARGET_SCORE = 60;
         
         // Default Teams State
@@ -183,9 +203,6 @@
 
         let soundEnabled = true;
         let currentView = 'projector';
-
-        // Multi-tab real-time sync channel
-        const syncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('tree_score_sync') : null;
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
@@ -242,30 +259,60 @@
             }
         }
 
-        function initData() {
-            const saved = localStorage.getItem('tree_scores_data');
-            if (saved) {
-                try {
-                    teamsState = JSON.parse(saved);
-                } catch(e) {
-                    console.error('Data restore failed', e);
-                }
-            }
-            
-            // Listen for cross-tab sync
-            if (syncChannel) {
-                syncChannel.onmessage = (event) => {
-                    if (event.data && event.data.type === 'UPDATE_SCORES') {
-                        teamsState = event.data.teams;
-                        renderAll();
-                    }
-                };
-            }
+        let firebaseReady = false;
+        let firebaseInitialized = false;
 
-            window.addEventListener('storage', (e) => {
-                if (e.key === 'tree_scores_data' && e.newValue) {
-                    teamsState = JSON.parse(e.newValue);
-                    renderAll();
+        function defaultTeamsObject() {
+            const obj = {};
+            teamsState.forEach(team => {
+                obj[String(team.id)] = { name: team.name, score: team.score };
+            });
+            return obj;
+        }
+
+        function normalizeTeams(data) {
+            const source = data || {};
+            return Array.from({ length: TOTAL_TEAMS }, (_, index) => {
+                const id = index + 1;
+                const saved = source[String(id)] || {};
+                return {
+                    id,
+                    name: typeof saved.name === 'string' && saved.name.trim() ? saved.name : `第${id}組`,
+                    score: Number.isFinite(Number(saved.score)) ? Math.max(0, Math.min(TARGET_SCORE, Number(saved.score))) : 0
+                };
+            });
+        }
+
+        function initData() {
+            // Firebase 是所有裝置共同的唯一資料來源；localStorage 只保存本機選中的組別。
+            teamsRef.on('value', (snapshot) => {
+                if (!snapshot.exists()) {
+                    if (!firebaseInitialized) {
+                        firebaseInitialized = true;
+                        teamsRef.set(defaultTeamsObject()).catch((err) => {
+                            console.error('Firebase 初始化失敗', err);
+                            showToast('資料庫初始化失敗，請檢查 Firebase 規則。', '⚠️');
+                        });
+                    }
+                    return;
+                }
+
+                firebaseInitialized = true;
+                teamsState = normalizeTeams(snapshot.val());
+                firebaseReady = true;
+                renderAll();
+            }, (error) => {
+                console.error('Firebase 讀取失敗', error);
+                firebaseReady = false;
+                showToast('無法連接雲端資料庫，請檢查網路或 Firebase 設定。', '⚠️');
+                renderAll();
+            });
+
+            db.ref('.info/connected').on('value', (snapshot) => {
+                firebaseReady = snapshot.val() === true;
+                const status = document.getElementById('firebase-status');
+                if (status) {
+                    status.textContent = firebaseReady ? '🟢 雲端同步中' : '🟠 連線中';
                 }
             });
 
@@ -279,11 +326,11 @@
         }
 
         function saveData(triggerSync = true) {
-            localStorage.setItem('tree_scores_data', JSON.stringify(teamsState));
-            if (triggerSync && syncChannel) {
-                syncChannel.postMessage({ type: 'UPDATE_SCORES', teams: teamsState });
-            }
-            renderAll();
+            // 保留原函式名稱，實際資料改由 Firebase 儲存。
+            teamsRef.set(defaultTeamsObject()).catch((err) => {
+                console.error('Firebase 寫入失敗', err);
+                showToast('分數沒有成功同步，請檢查網路。', '⚠️');
+            });
         }
 
         function getStageInfo(score) {
@@ -539,60 +586,60 @@
 
             // 只允許 +1、+2、-1
             if (![1, 2, -1].includes(delta)) return;
-
-            const team = teamsState.find(t => t.id === teamId);
-            if (!team) return;
-
-            const oldScore = team.score;
-            team.score = Math.max(0, team.score + delta);
-
-            if (delta > 0) {
-                playSound('up');
-                showToast(`[${team.name}] +${delta} 分！`, '🌱');
-            } else if (delta < 0) {
-                playSound('down');
+            if (!firebaseReady) {
+                showToast('正在連接雲端，請稍等一下再按。', '⏳');
+                return;
             }
 
-            // Check if reached 60 points milestone
-            if (oldScore < TARGET_SCORE && team.score >= TARGET_SCORE) {
-                playSound('victory');
-                showToast(`🎉 恭喜 [${team.name}] 達成 60 分成為參天大樹！`, '🌲');
-                fireConfetti();
-            }
+            const scoreRef = db.ref(`teams/${teamId}/score`);
+            scoreRef.transaction((currentScore) => {
+                const score = Number.isFinite(Number(currentScore)) ? Number(currentScore) : 0;
+                return Math.max(0, Math.min(TARGET_SCORE, score + delta));
+            }, (error, committed, snapshot) => {
+                if (error || !committed) {
+                    console.error('分數更新失敗', error);
+                    showToast('分數更新失敗，請再試一次。', '⚠️');
+                    return;
+                }
 
-            saveData();
+                const newScore = Number(snapshot.val() || 0);
+                if (delta > 0) {
+                    playSound('up');
+                    showToast(`[第 ${teamId} 組] +${delta} 分！`, '🌱');
+                } else {
+                    playSound('down');
+                }
+
+                if (delta > 0 && newScore === TARGET_SCORE) {
+                    playSound('victory');
+                    showToast(`🎉 恭喜 [第 ${teamId} 組] 達成 60 分成為參天大樹！`, '🌲');
+                    fireConfetti();
+                }
+            });
         }
 
         function setDirectScore(teamId, val) {
-            const num = parseInt(val, 10);
-            if (isNaN(num)) return;
-            const team = teamsState.find(t => t.id === teamId);
-            if (!team) return;
-            
-            const oldScore = team.score;
-            team.score = Math.max(0, num);
-
-            if (oldScore < TARGET_SCORE && team.score >= TARGET_SCORE) {
-                playSound('victory');
-                fireConfetti();
-            }
-
-            saveData();
+            // 已取消直接輸入分數；保留函式名稱以避免舊版介面呼叫時出錯。
+            return;
         }
 
         function updateTeamName(teamId, newName) {
-            const team = teamsState.find(t => t.id === teamId);
-            if (team && newName.trim() !== '') {
-                team.name = newName.trim();
-                saveData();
-            }
+            if (!newName || !newName.trim()) return;
+            db.ref(`teams/${teamId}/name`).set(newName.trim()).catch((err) => {
+                console.error('隊伍名稱更新失敗', err);
+            });
         }
 
         function resetScores() {
             if (confirm('確定要將所有組別的分數歸零嗎？')) {
-                teamsState.forEach(t => t.score = 0);
-                saveData();
-                showToast('所有組別分數已重置！', '🔄');
+                const updates = {};
+                for (let i = 1; i <= TOTAL_TEAMS; i++) updates[`teams/${i}/score`] = 0;
+                db.ref().update(updates).then(() => {
+                    showToast('所有組別分數已重置！', '🔄');
+                }).catch((err) => {
+                    console.error('重置失敗', err);
+                    showToast('重置失敗，請檢查網路。', '⚠️');
+                });
             }
         }
 
